@@ -4,10 +4,11 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Arrays;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.stream.IntStream;
 
-import static org.hamcrest.core.Is.is;
+import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.*;
 
 public class SimpleBlockingQueueTest {
@@ -23,31 +24,37 @@ public class SimpleBlockingQueueTest {
     }
 
     @Test
-    public void addAndReturnNumbers() throws InterruptedException {
-        SimpleBlockingQueue<Integer> simple = new SimpleBlockingQueue<>(5);
-        List<Integer> list = new ArrayList<>();
-        Thread first = new Thread(() -> {
-            for (int index = 1; index <= 10; index++) {
-                try {
-                    simple.offer(index);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
+    public void whenFetchAllThenGetIt() throws InterruptedException {
+        final CopyOnWriteArrayList<Integer> buffer = new CopyOnWriteArrayList<>();
+        final SimpleBlockingQueue<Integer> queue = new SimpleBlockingQueue<>();
+        Thread producer = new Thread(
+                () -> {
+                    IntStream.range(0, 5).forEach(element -> {
+                        try {
+                            queue.offer(element);
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
+                    });
                 }
-            }
-        });
-        Thread second = new Thread(() -> {
-            for (int index = 1; index <= 10; index++) {
-                try {
-                    list.add(simple.poll());
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
+        );
+        producer.start();
+        Thread consumer = new Thread(
+                () -> {
+                    while (!queue.isEmpty() || !Thread.currentThread().isInterrupted()) {
+                        try {
+                            buffer.add(queue.poll());
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                            Thread.currentThread().interrupt();
+                        }
+                    }
                 }
-            }
-        });
-        first.start();
-        second.start();
-        first.join();
-        second.join();
-        assertThat(list, is(List.of(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)));
+        );
+        consumer.start();
+        producer.join();
+        consumer.interrupt();
+        consumer.join();
+        assertThat(buffer, is(Arrays.asList(0, 1, 2, 3, 4)));
     }
 }
